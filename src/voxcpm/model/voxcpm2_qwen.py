@@ -264,6 +264,7 @@ class VoxCPMQwenModel(VoxCPM2Model):
         reference_voxcpm2_path: Optional[str] = None,
         max_length: int = 8192,
         device: str = "cpu",
+        dtype: Optional[str] = None,
     ) -> "VoxCPMQwenModel":
         """Build and save a fresh (untrained apart from the Qwen backbone)
         VoxCPM2-with-Qwen-backbone checkpoint directory, ready to be pointed
@@ -294,7 +295,19 @@ class VoxCPMQwenModel(VoxCPM2Model):
             dit_config=VoxCPMDitConfig(cfm_config=CfmConfig()),
             max_length=max_length,
             device=device,
-            dtype="float32" if device == "cpu" else "bfloat16",
+            # NOTE: intentionally NOT derived from `device`. `device` here is
+            # only where this init script happens to build/save the
+            # checkpoint (CPU is fine for that and is the CLI default) --
+            # it says nothing about what dtype training will actually run
+            # in later. Defaulting dtype off device silently baked
+            # "float32" into config.json for anyone who ran this script
+            # without --device cuda, which then mismatched the bfloat16
+            # autocast train_voxcpm_finetune.py's generate_sample_audio()
+            # always uses, crashing StaticKVCache writes with a dtype
+            # mismatch. bfloat16 is the dtype every other part of this repo
+            # assumes; override explicitly via `dtype=` / --dtype only for
+            # a deliberately CPU-only or float32 setup.
+            dtype=dtype or "bfloat16",
             qwen_model_name_or_path=qwen_model_name_or_path,
             freeze_qwen_backbone=False,
         )

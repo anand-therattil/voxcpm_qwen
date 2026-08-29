@@ -48,6 +48,13 @@ def main():
     )
     parser.add_argument("--max-length", type=int, default=8192)
     parser.add_argument("--device", default="cpu", help="Device to build the model on (cpu is fine for init).")
+    parser.add_argument(
+        "--dtype",
+        default=None,
+        choices=["bfloat16", "float32"],
+        help="dtype saved into config.json for later training/inference (default: bfloat16, "
+        "independent of --device). Only override this for a deliberately CPU-only / float32 setup.",
+    )
     args = parser.parse_args()
 
     if args.reference_voxcpm2_path is None:
@@ -64,6 +71,7 @@ def main():
         reference_voxcpm2_path=args.reference_voxcpm2_path,
         max_length=args.max_length,
         device=args.device,
+        dtype=args.dtype,
     )
     print(f"Done. Point pretrained_path at: {args.save_path}", file=sys.stderr)
 
