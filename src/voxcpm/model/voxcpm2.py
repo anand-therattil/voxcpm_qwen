@@ -103,7 +103,7 @@ class VoxCPMEncoderConfig(BaseModel):
     ffn_dim: int = 4096
     num_heads: int = 16
     num_layers: int = 4
-    kv_channels: int = None
+    kv_channels: Optional[int] = None
 
 
 class VoxCPMDitConfig(BaseModel):
@@ -111,7 +111,7 @@ class VoxCPMDitConfig(BaseModel):
     ffn_dim: int = 4096
     num_heads: int = 16
     num_layers: int = 4
-    kv_channels: int = None
+    kv_channels: Optional[int] = None
     dit_mean_mode: bool = False
 
     cfm_config: CfmConfig
