@@ -163,8 +163,12 @@ class VoxCPMQwenModel(VoxCPM2Model):
         # prepare_qwen_tokenizer_and_vocab_size(), instead of the base
         # class's hardcoded 101-104 (which collide with real Qwen BPE
         # tokens -- see module docstring).
-        ids = self.text_tokenizer.convert_tokens_to_ids(QWEN_AUDIO_SPECIAL_TOKENS)
-        unk_id = getattr(self.text_tokenizer, "unk_token_id", None)
+        # NOTE: use the raw `tokenizer` arg here, not `self.text_tokenizer` --
+        # super().__init__() wraps the latter in CharTokenizerWrapper (see
+        # model/utils.py:mask_multichar_chinese_tokens), which only exposes
+        # tokenize()/__call__(), not the full PreTrainedTokenizer API.
+        ids = tokenizer.convert_tokens_to_ids(QWEN_AUDIO_SPECIAL_TOKENS)
+        unk_id = getattr(tokenizer, "unk_token_id", None)
         if any(i is None or i == unk_id for i in ids):
             raise ValueError(
                 "Qwen tokenizer is missing VoxCPM's audio marker special tokens "
