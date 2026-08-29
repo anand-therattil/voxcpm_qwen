@@ -142,7 +142,6 @@ def build_default_lm_config_for_qwen(qwen_model_name_or_path: str, max_length: i
         dim_model_base=256,
         scale_depth=1.0,
         rope_theta=getattr(qwen_cfg, "rope_theta", 10000.0),
-        kv_channels=None,
         no_rope=False,
     )
 
