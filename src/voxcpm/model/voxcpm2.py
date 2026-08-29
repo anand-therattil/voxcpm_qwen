@@ -180,7 +180,7 @@ class VoxCPM2Model(nn.Module):
         print(f"Running on device: {self.device}, dtype: {self.config.dtype}", file=sys.stderr)
 
         # Text-Semantic LM
-        self.base_lm = MiniCPMModel(config.lm_config)
+        self.base_lm = self._build_base_lm(config)
         self.base_lm.setup_cache(1, config.max_length, self.device, get_dtype(self.config.dtype))
 
         self.text_tokenizer = mask_multichar_chinese_tokens(tokenizer)
@@ -250,6 +250,23 @@ class VoxCPM2Model(nn.Module):
 
         if self.lora_config is not None:
             self._apply_lora()
+
+    def _build_base_lm(self, config: "VoxCPMConfig") -> nn.Module:
+        """Hook for subclasses to swap the text-semantic backbone (e.g. a
+        pretrained external LLM such as Qwen2.5) while reusing the rest of
+        the VoxCPM2 pipeline (residual acoustic LM, LocEnc, LocDiT, AudioVAE,
+        projections) unchanged. See model/voxcpm2_qwen.py:VoxCPMQwenModel for
+        a concrete example.
+
+        The returned module must implement the same interface MiniCPMModel
+        does: .embed_tokens, .forward(inputs_embeds, is_causal) -> (hidden,
+        cache), .setup_cache(batch_size, max_length, device, dtype),
+        .forward_step(inputs_embeds, position_id), and expose .kv_cache with
+        .fill_caches()/.step()/.get_layer_cache() (see modules/minicpm4/
+        cache.py:StaticKVCache, which is backbone-agnostic and safe to reuse
+        as-is for a replacement backbone).
+        """
+        return MiniCPMModel(config.lm_config)
 
     def _apply_lora(self):
         """注入 LoRA 到 LM / DiT / 投影层"""

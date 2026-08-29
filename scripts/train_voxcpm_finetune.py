@@ -30,6 +30,7 @@ except ImportError:
 import json
 
 from voxcpm.model import VoxCPMModel, VoxCPM2Model
+from voxcpm.model.voxcpm2_qwen import VoxCPMQwenModel
 from voxcpm.model.voxcpm import LoRAConfig as LoRAConfigV1
 from voxcpm.model.voxcpm2 import LoRAConfig as LoRAConfigV2
 from voxcpm.training import (
@@ -93,8 +94,12 @@ def train(
     # Auto-detect model architecture from config.json
     with open(os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8") as _f:
         _arch = json.load(_f).get("architecture", "voxcpm").lower()
-    _model_cls = VoxCPM2Model if _arch == "voxcpm2" else VoxCPMModel
-    LoRAConfig = LoRAConfigV2 if _arch == "voxcpm2" else LoRAConfigV1
+    _arch_to_cls = {
+        "voxcpm2": VoxCPM2Model,
+        "voxcpm2-qwen": VoxCPMQwenModel,
+    }
+    _model_cls = _arch_to_cls.get(_arch, VoxCPMModel)
+    LoRAConfig = LoRAConfigV2 if _arch in _arch_to_cls else LoRAConfigV1
     if accelerator.rank == 0:
         print(f"Detected architecture: {_arch} -> {_model_cls.__name__}", file=sys.stderr)
     base_model = _model_cls.from_local(

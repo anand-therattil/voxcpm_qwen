@@ -79,6 +79,16 @@ class VoxCPM:
                 lora_config=lora_config,
             )
             print("Loaded VoxCPMModel", file=sys.stderr)
+        elif arch == "voxcpm2-qwen":
+            from .model.voxcpm2_qwen import VoxCPMQwenModel
+
+            self.tts_model = VoxCPMQwenModel.from_local(
+                voxcpm_model_path,
+                optimize=optimize,
+                device=device,
+                lora_config=lora_config,
+            )
+            print("Loaded VoxCPMQwenModel", file=sys.stderr)
         else:
             raise ValueError(f"Unsupported architecture: {arch}")
 
