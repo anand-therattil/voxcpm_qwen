@@ -140,18 +140,22 @@ class QwenLMBackbone(nn.Module):
         hidden_states = inputs_embeds.unsqueeze(1)  # (B, 1, H)
 
         # self.kv_cache (a StaticKVCache) holds a raw tensor, not a
-        # registered nn.Module buffer, so it does NOT move when this module
-        # is later moved via model.to(device) -- it stays wherever
-        # setup_cache() originally allocated it, e.g. "cpu" if a stale
-        # checkpoint's config.json still says device="cpu". VoxCPM2Model's
-        # generation loop derives position_id (and every other live tensor)
-        # from wherever the rest of the model actually lives, so
-        # hidden_states.device is the authoritative "real" device here --
-        # self-heal the cache to match it once, rather than dragging live
-        # computation down to a potentially stale cache device.
+        # registered nn.Module buffer, so it does NOT move/recast when this
+        # module is later moved via model.to(device) or run under a
+        # different precision than it was constructed with -- it stays
+        # exactly as setup_cache() first allocated it, e.g.
+        # device="cpu"/dtype="float32" if a stale checkpoint's config.json
+        # says so, even while generation runs under an explicit bfloat16
+        # CUDA autocast. hidden_states is authoritative for both device and
+        # dtype here (it reflects wherever/however the rest of the live
+        # model is actually running), so self-heal the cache to match it
+        # once, rather than either crashing on a mismatch or (the previous
+        # version of this fix) silently downcasting live bf16 values into a
+        # stale float32 cache.
         target_device = hidden_states.device
-        if self.kv_cache.kv_cache.device != target_device:
-            self.kv_cache.kv_cache = self.kv_cache.kv_cache.to(target_device)
+        target_dtype = hidden_states.dtype
+        if self.kv_cache.kv_cache.device != target_device or self.kv_cache.kv_cache.dtype != target_dtype:
+            self.kv_cache.kv_cache = self.kv_cache.kv_cache.to(device=target_device, dtype=target_dtype)
 
         position_id = position_id.to(target_device)
         position_ids = position_id.view(1, 1).expand(bsz, 1)

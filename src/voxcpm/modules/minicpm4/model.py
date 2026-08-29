@@ -398,6 +398,22 @@ class MiniCPMModel(nn.Module):
         """
         assert self.kv_cache is not None, "KV cache is not setup"
 
+        # self.kv_cache (a StaticKVCache) holds a raw tensor, not a
+        # registered nn.Module buffer, so it does NOT move/recast when this
+        # module is later moved via model.to(device) or otherwise run under
+        # a different precision than it was constructed with (e.g. a
+        # checkpoint's config.json says dtype="float32"/device="cpu" but
+        # generation runs under an explicit bfloat16 CUDA autocast). Treat
+        # inputs_embeds as authoritative for both device and dtype, and
+        # self-heal the cache to match once, rather than either crashing on
+        # an index_put dtype/device mismatch or silently downcasting live
+        # values into a stale cache precision/device.
+        target_device = inputs_embeds.device
+        target_dtype = inputs_embeds.dtype
+        if self.kv_cache.kv_cache.device != target_device or self.kv_cache.kv_cache.dtype != target_dtype:
+            self.kv_cache.kv_cache = self.kv_cache.kv_cache.to(device=target_device, dtype=target_dtype)
+        position_id = position_id.to(target_device)
+
         if self.rope_emb is not None:
             position_emb = self.rope_emb(position_id)
         else:
