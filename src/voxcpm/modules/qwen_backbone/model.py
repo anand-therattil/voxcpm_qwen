@@ -177,6 +177,19 @@ class QwenLMBackbone(nn.Module):
         q, k = _apply_rotary_pos_emb(q, k, cos, sin)
 
         key_cache, value_cache = kv_cache
+        # Defensive cast: q/k/v are computed under whatever precision the
+        # *caller's* context uses (e.g. train_voxcpm_finetune.py wraps
+        # generate_sample_audio() in an explicit bfloat16 autocast), while
+        # key_cache/value_cache were allocated once, up front, in
+        # self.config.dtype (see setup_cache() / VoxCPM2Model.__init__).
+        # Those two can silently drift apart (they did: a checkpoint saved
+        # with dtype="float32" but exercised under a bfloat16 autocast), and
+        # index_put_ (this cache write) requires an exact dtype match, unlike
+        # most other tensor ops which upcast/downcast implicitly. Casting the
+        # write side here makes this correct regardless of that drift.
+        k = k.to(key_cache.dtype)
+        v = v.to(value_cache.dtype)
+        q = q.to(key_cache.dtype)
         key_cache[:, :, position_id, :] = k
         value_cache[:, :, position_id, :] = v
 
