@@ -139,6 +139,15 @@ class QwenLMBackbone(nn.Module):
         bsz = inputs_embeds.size(0)
         hidden_states = inputs_embeds.unsqueeze(1)  # (B, 1, H)
 
+        # position_id is built by the caller (VoxCPM2Model._inference) from
+        # whatever device curr_embed happened to be on at that point in the
+        # generation loop, which is not guaranteed to already match
+        # self.kv_cache's device (see the device-drift issue this whole
+        # cache implementation is prone to -- StaticKVCache is a raw tensor,
+        # not a registered nn.Module buffer, so it never moves on its own).
+        # Normalize once, up front, since it feeds both the rotary embedding
+        # and every layer's cache write/attention mask below.
+        position_id = position_id.to(self.kv_cache.kv_cache.device)
         position_ids = position_id.view(1, 1).expand(bsz, 1)
         cos, sin = self.qwen.rotary_emb(hidden_states, position_ids)
 
