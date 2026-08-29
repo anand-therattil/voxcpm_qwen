@@ -20,7 +20,7 @@ class Accelerator:
     preparing models/dataloaders for DDP.
     """
 
-    def __init__(self, amp: bool = False, seed: int = 42):
+    def __init__(self, amp: bool = False, seed: int = 42, amp_dtype: torch.dtype = torch.bfloat16):
         self.world_size = int(os.getenv("WORLD_SIZE", "1"))
 
         if self.world_size > 1 and not dist.is_initialized():
@@ -29,6 +29,7 @@ class Accelerator:
         self.rank = dist.get_rank() if dist.is_initialized() else 0
         self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         self.amp = amp
+        self.amp_dtype = amp_dtype
 
         # Set random seed to ensure model initialization consistency
         self._set_seed(seed)
@@ -46,7 +47,15 @@ class Accelerator:
             def update(self):
                 pass
 
-        self.scaler = torch.amp.GradScaler("cuda") if (amp and torch.cuda.is_available()) else DummyScaler()
+        # GradScaler exists to guard against fp16 underflow -- it is not
+        # meaningful (and its fused kernel is not even implemented) for
+        # bfloat16, which every autocast() call site in this training
+        # script uses. Only build a real scaler for float16 training.
+        self.scaler = (
+            torch.amp.GradScaler("cuda")
+            if (amp and torch.cuda.is_available() and amp_dtype == torch.float16)
+            else DummyScaler()
+        )
         self.device_ctx = torch.cuda.device(self.local_rank) if torch.cuda.is_available() else None
         self._ddp_model = None  # For no_sync support
 
@@ -115,6 +124,7 @@ class Accelerator:
     # AMP helpers
     # ------------------------------------------------------------------ #
     def autocast(self, *args, **kwargs):
+        kwargs.setdefault("dtype", self.amp_dtype)
         return torch.amp.autocast("cuda", enabled=self.amp, *args, **kwargs)
 
     def backward(self, loss: torch.Tensor):
