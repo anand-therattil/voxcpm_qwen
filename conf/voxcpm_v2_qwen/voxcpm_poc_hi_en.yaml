@@ -8,6 +8,22 @@
 # language allowlist.
 #
 # Prerequisite: run scripts/init_voxcpm_qwen_poc.py to produce pretrained_path.
+#
+# IMPORTANT -- this is a FULL fine-tune config, not LoRA, and that's
+# deliberate: LocEnc (feat_encoder), most of the residual acoustic LM, most
+# of LocDiT, and the stop head are randomly initialized by
+# init_voxcpm_qwen_poc.py. VoxCPM2Model._apply_lora() only ever wraps
+# base_lm/residual_lm/feat_decoder.estimator's q/k/v/o_proj layers (and
+# optionally 4 named cross-module projections) -- it never touches
+# feat_encoder at all, and leaves every MLP/other layer frozen everywhere
+# else. Training this PoC with lora: {...} set would leave LocEnc and most
+# of the acoustic pipeline permanently at random initialization, no matter
+# how much data or how many steps you run -- it would not converge. LoRA is
+# the right choice once you're steering an already-good VoxCPM2 checkpoint
+# (stock fine-tuning); it is the wrong choice for training these
+# from-scratch modules. Do not add a `lora:` block back here unless you've
+# also extended _apply_lora()/target_modules to cover feat_encoder and the
+# non-attention layers.
 
 pretrained_path: /path/to/VoxCPM2-Qwen2.5-0.5B-poc/
 train_manifest: /path/to/train_hi_en.jsonl
@@ -15,21 +31,24 @@ val_manifest: /path/to/val_hi_en.jsonl
 sample_rate: 16000        # must match the reused AudioVAE's encoder input rate
 out_sample_rate: 48000    # for TensorBoard audio logging
 
-# Small batch / short run defaults for a PoC -- everything downstream of the
-# Qwen backbone (residual LM, LocEnc, LocDiT, projections) is randomly
-# initialized, so expect this to need real iteration (num_iters, data volume)
-# before output is intelligible. These are starting points, not targets.
-batch_size: 2
-grad_accum_steps: 8       # effective batch size = batch_size x grad_accum_steps = 16
+# Small batch / short run defaults for a first sanity-check iteration --
+# see the "first iteration" data/step guidance in POC_QWEN_BACKBONE.md.
+# Everything downstream of the Qwen backbone (residual LM, LocEnc, LocDiT,
+# projections) is randomly initialized, so don't expect intelligible audio
+# until well past the defaults below -- these are a starting point to
+# confirm the pipeline is healthy (losses trending down, no NaNs), not a
+# target for a finished model.
+batch_size: 4
+grad_accum_steps: 4       # effective batch size = batch_size x grad_accum_steps = 16
 num_workers: 4
-num_iters: 2000
-log_interval: 10
-valid_interval: 200
-save_interval: 200
-learning_rate: 0.00003
+num_iters: 20000
+log_interval: 20
+valid_interval: 500
+save_interval: 500
+learning_rate: 0.0001
 weight_decay: 0.01
-warmup_steps: 100
-max_steps: 2000
+warmup_steps: 500
+max_steps: 20000
 max_batch_tokens: 8192
 max_grad_norm: 1.0
 save_path: /path/to/checkpoints/voxcpm2_qwen_poc_hi_en
@@ -38,14 +57,11 @@ lambdas:
   loss/diff: 1.0
   loss/stop: 1.0
 
-# Recommended for a PoC: LoRA on the Qwen backbone (cheap, fast iteration)
-# rather than full fine-tuning. Flip to a full-finetune run only once this
-# looks promising and you have the compute budget for it.
-lora:
-  enable_lm: true     # applies to base_lm (Qwen) AND residual_lm -- see
-                       # VoxCPM2Model._apply_lora; both use q/k/v/o_proj names
-  enable_dit: true
-  enable_proj: false
-  r: 16
-  alpha: 16
-  dropout: 0.0
+# No `lora:` block -- see the IMPORTANT note above. This is a full
+# fine-tune: every non-audio_vae parameter (Qwen backbone included) gets
+# gradients. If you specifically want to freeze the Qwen backbone itself
+# while training the rest (a legitimate choice -- Qwen is already
+# pretrained, the acoustic pipeline is not), set freeze_qwen_backbone: true
+# in the checkpoint's config.json (or pass it to
+# VoxCPMQwenModel.init_poc_checkpoint / init_voxcpm_qwen_poc.py) instead of
+# using this file's LoRA mechanism for that.
