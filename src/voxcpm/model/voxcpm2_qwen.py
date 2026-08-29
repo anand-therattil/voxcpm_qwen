@@ -294,7 +294,21 @@ class VoxCPMQwenModel(VoxCPM2Model):
             encoder_config=VoxCPMEncoderConfig(),
             dit_config=VoxCPMDitConfig(cfm_config=CfmConfig()),
             max_length=max_length,
-            device=device,
+            # NOTE: saved as "auto", NOT the literal `device` this init
+            # script happened to build on (CPU by default). resolve_runtime_
+            # device() treats a concrete "cpu"/"cuda" in config.json as an
+            # explicit, authoritative choice -- not "unset" -- so a checkpoint
+            # saved with device="cpu" forced VoxCPM2Model.__init__ to build
+            # StaticKVCache on CPU even when loaded for training on a CUDA
+            # box. StaticKVCache holds a raw tensor, not a registered
+            # nn.Module buffer (see modules/minicpm4/cache.py), so a later
+            # model.to("cuda") does NOT move it -- crashing generation with a
+            # cuda/cpu device mismatch on the cache write. "auto" makes
+            # resolve_runtime_device() auto-detect the actual runtime device
+            # every time the checkpoint is loaded, regardless of what
+            # machine/device built it. The `device` param below still
+            # controls where *this init call* builds/saves the checkpoint.
+            device="auto",
             # NOTE: intentionally NOT derived from `device`. `device` here is
             # only where this init script happens to build/save the
             # checkpoint (CPU is fine for that and is the CLI default) --

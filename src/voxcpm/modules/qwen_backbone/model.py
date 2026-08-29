@@ -184,12 +184,15 @@ class QwenLMBackbone(nn.Module):
         # self.config.dtype (see setup_cache() / VoxCPM2Model.__init__).
         # Those two can silently drift apart (they did: a checkpoint saved
         # with dtype="float32" but exercised under a bfloat16 autocast), and
-        # index_put_ (this cache write) requires an exact dtype match, unlike
-        # most other tensor ops which upcast/downcast implicitly. Casting the
-        # write side here makes this correct regardless of that drift.
-        k = k.to(key_cache.dtype)
-        v = v.to(value_cache.dtype)
-        q = q.to(key_cache.dtype)
+        # index_put_ (this cache write) requires an exact dtype AND device
+        # match, unlike most other tensor ops which upcast/move implicitly.
+        # StaticKVCache also holds a raw tensor, not a registered nn.Module
+        # buffer, so it does not move with a later model.to(device) call --
+        # another way these two can drift apart. Casting the write side here
+        # makes this correct regardless of either kind of drift.
+        k = k.to(device=key_cache.device, dtype=key_cache.dtype)
+        v = v.to(device=value_cache.device, dtype=value_cache.dtype)
+        q = q.to(device=key_cache.device, dtype=key_cache.dtype)
         key_cache[:, :, position_id, :] = k
         value_cache[:, :, position_id, :] = v
 
